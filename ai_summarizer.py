@@ -82,27 +82,34 @@ TCG SECTION CODES:
 {SECTION_LIST}
 
 TCG SUMMARY STYLE RULES:
-1. FIRST SENTENCE must "bottom line" the story — state WHO did WHAT and WHY it matters.
-   Wrap the entire first sentence in **bold** markers.
-2. Write EXACTLY 2 more sentences after the first. Total summary = 3 sentences. Never fewer.
-   Use those 2 sentences for: key context, what happens next, and/or why readers should care.
-3. Bold names of U.S. legislators, prominent political figures, business leaders,
-   and foreign dignitaries (e.g., **President Biden**, **Speaker Johnson**).
-4. Think WHO / WHAT / WHERE / WHEN / WHY / IMPACT.
-5. Be direct. No fluff. Write for an informed general audience.
-6. If the article is an OPINION piece, set type to "OPINION".
-7. If the article is an analysis/explainer, set type to "ANALYSIS".
-8. If the article reports a poll/survey result, set type to "POLL".
-9. If the article describes an emerging trend, set type to "TREND".
-10. Otherwise set type to "NEWS".
+1. The summary MUST be exactly 3 sentences. Never 1. Never 2. Always 3.
+2. Sentence 1: Bottom-line the story — WHO did WHAT and WHY it matters.
+   Wrap ALL of sentence 1 in **bold** markers like this: **Sentence one text here.**
+3. Sentence 2: Key context — background, details, or how it happened.
+4. Sentence 3: Impact or what comes next — why readers should care.
+5. Bold names of U.S. legislators, political figures, business leaders, foreign dignitaries
+   (e.g. **President Trump**, **Speaker Johnson**, **Elon Musk**).
+6. Be direct and specific. No vague filler. Write for an informed general audience.
+7. Set type to OPINION/ANALYSIS/POLL/TREND when appropriate, otherwise NEWS.
+
+EXAMPLE of a correct 3-sentence summary:
+"**The Senate passed a sweeping immigration bill that would sharply cut legal immigration by 40%, sending it to the House for a vote.** The legislation, backed by **Majority Leader John Thune**, eliminates the diversity visa lottery and caps family-based green cards — the most significant immigration overhaul in decades. Immigrant advocacy groups immediately announced legal challenges, while business groups warned the cuts would worsen labor shortages across key industries."
 
 OUTPUT FORMAT — respond with valid JSON only, no markdown fences:
 {{
   "section": "<SECTION_CODE>",
   "type": "NEWS" | "OPINION" | "ANALYSIS" | "POLL" | "TREND",
   "author": "<author name if OPINION, else empty string>",
-  "summary": "<formatted summary with **bold** for first sentence and key names>"
+  "summary": "<exactly 3 sentences with **bold** first sentence and bold key names>"
 }}"""
+
+EXPAND_PROMPT = """Your previous summary had fewer than 3 sentences. You MUST write exactly 3 sentences.
+
+Sentence 1 (bold): Bottom line — who did what and why it matters.
+Sentence 2: Key context or details.
+Sentence 3: Impact or what comes next.
+
+Rewrite the summary now with all 3 sentences. Return the same JSON format."""
 
 
 def build_user_prompt(article: Article) -> str:
@@ -117,51 +124,104 @@ CONTENT:
 {text}"""
 
 
+def count_sentences(text: str) -> int:
+    """Rough sentence count — split on . ! ? followed by space or end."""
+    import re
+    # Strip bold markers for counting
+    clean = re.sub(r"\*\*", "", text)
+    parts = re.split(r'(?<=[.!?])\s+', clean.strip())
+    return len([p for p in parts if p.strip()])
+
+
 # ─── Core Summarization ───────────────────────────────────────────────────────
+
+# Titles that indicate live blogs — no stable content to summarize
+SKIP_TITLE_PREFIXES = (
+    "live update", "live blog", "live coverage", "live:",
+    "breaking:", "developing:",
+)
+
+
+def _is_skippable(article: Article) -> bool:
+    title_lower = article.title.lower()
+    return any(title_lower.startswith(p) for p in SKIP_TITLE_PREFIXES)
+
+
+def _parse_raw(raw: str) -> dict:
+    """Strip fences, extract JSON object, and parse. Raises json.JSONDecodeError on failure."""
+    raw = re.sub(r"^```(?:json)?\s*\n?", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\n?```\s*$", "", raw, flags=re.MULTILINE)
+    raw = raw.strip()
+    json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(0)
+    elif raw.startswith("{") and not raw.rstrip().endswith("}"):
+        raw = raw.rstrip().rstrip(",") + '"}'
+    return json.loads(raw)
+
 
 def summarize_article(client, article: Article, retries: int = 2) -> Optional[BriefEntry]:
     """Call Groq (Llama) to classify + summarize one article."""
-    prompt = build_user_prompt(article)
+    # Skip live-update articles — they have no stable summary content
+    if _is_skippable(article):
+        print(f"  ⏭ Skipping live-update article: {article.title[:60]}")
+        return None
+
+    user_prompt = build_user_prompt(article)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user",   "content": user_prompt},
+    ]
 
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
+                messages=messages,
                 temperature=0.3,
-                max_tokens=700,
+                max_tokens=800,
             )
             raw = response.choices[0].message.content.strip()
 
-            # Strip markdown fences (```json ... ``` or ``` ... ```)
-            raw = re.sub(r"^```(?:json)?\s*\n?", "", raw, flags=re.MULTILINE)
-            raw = re.sub(r"\n?```\s*$", "", raw, flags=re.MULTILINE)
-            raw = raw.strip()
+            try:
+                data = _parse_raw(raw)
+            except json.JSONDecodeError:
+                # Try regex extraction as fallback
+                summary_match = re.search(r'"summary"\s*:\s*"(.+?)(?<!\\)"', raw, re.DOTALL)
+                section_match = re.search(r'"section"\s*:\s*"(\w+)"', raw)
+                if summary_match:
+                    data = {
+                        "summary": summary_match.group(1).replace('\\"', '"'),
+                        "section": section_match.group(1) if section_match else "GOV_POLICY",
+                        "type": "NEWS", "author": "",
+                    }
+                else:
+                    # Can't parse at all — skip
+                    print(f"  ✗ JSON parse failed for '{article.title[:50]}'")
+                    return None
 
-            # Try to pull out JSON object; if truncated, close it first
-            json_match = re.search(r"\{.*\}", raw, re.DOTALL)
-            if json_match:
-                raw = json_match.group(0)
-            elif raw.startswith("{") and not raw.rstrip().endswith("}"):
-                # Truncated JSON — close it so we can at least parse what's there
-                raw = raw.rstrip().rstrip(",") + '"}'
-
-            data = json.loads(raw)
             section    = data.get("section", "GOV_POLICY")
             entry_type = data.get("type", "NEWS")
             author     = data.get("author", "")
             summary    = data.get("summary", "").strip()
 
-            # Validate section code
             if section not in TCG_SECTIONS:
                 section = "GOV_POLICY"
 
-            # Safety: if summary looks like raw JSON or is empty, use title
+            # Reject if summary is empty or looks like raw JSON
             if not summary or summary.lstrip().startswith("{"):
-                summary = f"**{article.title}**"
+                return None
+
+            # If the model returned fewer than 2 sentences, ask it to expand (once)
+            if count_sentences(summary) < 2 and attempt == 0:
+                print(f"  ↩ Only 1 sentence returned — requesting expansion...")
+                messages = messages + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "user",      "content": EXPAND_PROMPT},
+                ]
+                # Don't count this as a retry — loop will increment attempt next
+                time.sleep(0.5)
+                continue
 
             return BriefEntry(
                 article=article,
@@ -171,18 +231,6 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
                 author=author,
             )
 
-        except json.JSONDecodeError:
-            # JSON parsing failed — use raw text as summary but clean it up
-            # Try to at least extract the summary field with regex
-            summary_match = re.search(r'"summary"\s*:\s*"(.+?)(?<!\\)"', raw, re.DOTALL)
-            section_match = re.search(r'"section"\s*:\s*"(\w+)"', raw)
-            if summary_match:
-                summary = summary_match.group(1).replace('\\"', '"')
-                section = section_match.group(1) if section_match and section_match.group(1) in TCG_SECTIONS else "GOV_POLICY"
-                return BriefEntry(article=article, section=section, summary=summary)
-            # Last resort: use title as summary
-            return BriefEntry(article=article, section="GOV_POLICY", summary=f"**{article.title}**")
-
         except Exception as e:
             err_str = str(e).lower()
             if "quota" in err_str or "rate" in err_str or "429" in err_str:
@@ -190,7 +238,6 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
                 print(f"  ⏳ Rate limited. Waiting {wait}s...")
                 time.sleep(wait)
             elif "api_key" in err_str or "invalid" in err_str or "401" in err_str or "403" in err_str:
-                # Bad key — don't keep retrying, raise immediately so Streamlit shows the error
                 raise RuntimeError(f"Groq API error: {e}")
             elif attempt < retries:
                 time.sleep(3)

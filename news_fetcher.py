@@ -200,15 +200,18 @@ def deduplicate(articles: list[Article]) -> list[Article]:
 
 def fetch_all_articles(max_age_hours: float = 24,
                        enrich_text: bool = True,
-                       progress_callback=None) -> list[Article]:
+                       progress_callback=None,
+                       selected_sources: list[str] | None = None) -> list[Article]:
     """
     Fetch articles from all configured sources within max_age_hours.
     Returns deduplicated list sorted newest-first.
 
+    selected_sources: if provided, only fetch from those source names.
     progress_callback: optional fn(source_name, current, total) for UI updates.
     """
     all_articles: list[Article] = []
-    source_names = list(SOURCES.keys())
+    source_names = [s for s in SOURCES.keys()
+                    if selected_sources is None or s in selected_sources]
     total = len(source_names)
 
     for i, source_name in enumerate(source_names):

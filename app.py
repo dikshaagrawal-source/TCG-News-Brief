@@ -8,7 +8,9 @@ To deploy free:  https://share.streamlit.io → connect your GitHub repo
 
 import streamlit as st
 import os
+import subprocess
 from datetime import datetime, timezone
+from collections import defaultdict
 from dotenv import load_dotenv
 
 # Load .env for local development
@@ -16,7 +18,7 @@ load_dotenv()
 
 from news_fetcher import fetch_all_articles, Article
 from ai_summarizer import summarize_all, organize_by_section, BriefEntry
-from sources_config import TCG_SECTIONS, SECTION_ORDER, DOMESTIC_SECTIONS, WORLD_SECTIONS
+from sources_config import TCG_SECTIONS, SECTION_ORDER, DOMESTIC_SECTIONS, WORLD_SECTIONS, SOURCES
 from emailer import send_brief_email
 
 # ─── Page Config ─────────────────────────────────────────────────────────────
@@ -145,6 +147,41 @@ def entry_to_html(entry: BriefEntry, initials: str) -> str:
     </div>"""
 
 
+def balance_article_selection(articles: list, max_articles: int) -> list:
+    """
+    When summarizing ≥20 articles, round-robin across sources so no single
+    source dominates and the brief covers more sections.
+    """
+    by_source = defaultdict(list)
+    for art in articles:
+        by_source[art.source_name].append(art)
+
+    result = []
+    source_lists = list(by_source.values())
+    idx = 0
+    while len(result) < max_articles and any(source_lists):
+        lst = source_lists[idx % len(source_lists)]
+        if lst:
+            result.append(lst.pop(0))
+        idx += 1
+    return result
+
+
+def get_git_version() -> str:
+    """Return short git commit hash, or empty string if unavailable."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+            cwd=os.path.dirname(__file__) or ".",
+        )
+        if out.returncode == 0:
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
 def brief_to_plain_text(organized: dict, initials: str) -> str:
     """Convert organized brief to plain text for copying/emailing."""
     lines = []
@@ -231,12 +268,33 @@ with st.sidebar:
 
     max_articles = st.slider(
         "📄 Max articles to summarize",
-        min_value=10,
+        min_value=5,
         max_value=80,
         value=20,
         step=5,
         help="More articles = better coverage but takes longer (~2 sec/article). Start with 20 to test."
     )
+
+    st.divider()
+    st.markdown("### 📰 Sources")
+    all_source_names = sorted(SOURCES.keys())
+    source_mode = st.radio(
+        "Which sources?",
+        options=["All sources", "Select sources"],
+        horizontal=True,
+    )
+    if source_mode == "Select sources":
+        selected_sources = st.multiselect(
+            "Choose sources",
+            options=all_source_names,
+            default=all_source_names,
+            help="Uncheck sources you want to skip for this run.",
+        )
+        if not selected_sources:
+            st.warning("Pick at least one source.")
+            selected_sources = all_source_names
+    else:
+        selected_sources = None  # None = all sources
 
     st.divider()
     st.markdown("### 📧 Email Settings")
@@ -324,6 +382,7 @@ if generate_btn:
         max_age_hours=time_interval,
         enrich_text=True,
         progress_callback=fetch_progress_cb,
+        selected_sources=selected_sources,
     )
 
     for art in articles_list:
@@ -336,8 +395,14 @@ if generate_btn:
         st.session_state.is_generating = False
         st.stop()
 
+    # Balance article selection for diversity when running ≥20
+    if max_articles >= 20:
+        articles_list = balance_article_selection(articles_list, max_articles)
+    else:
+        articles_list = articles_list[:max_articles]
+
     # Step 2: AI Summarization
-    status_text.markdown(f"**Step 2/2 — Summarizing {min(len(articles_list), max_articles)} articles with AI...**  \n_(~4 seconds per article due to free API rate limits)_")
+    status_text.markdown(f"**Step 2/2 — Summarizing {len(articles_list)} articles with AI...**  \n_(~4 seconds per article due to free API rate limits)_")
     summ_progress = st.empty()
 
     entries: list[BriefEntry] = []
@@ -492,3 +557,15 @@ else:
    ```
 5. Restart the app — that's it! Groq is free with no daily limits.
             """)
+
+# ─── Git Version Footer ───────────────────────────────────────────────────────
+
+_git_ver = get_git_version()
+if _git_ver:
+    st.markdown(
+        f'<div style="position:fixed;bottom:10px;right:14px;'
+        f'font-size:10px;color:#bbb;font-family:monospace;'
+        f'background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:3px;">'
+        f'git {_git_ver}</div>',
+        unsafe_allow_html=True,
+    )
