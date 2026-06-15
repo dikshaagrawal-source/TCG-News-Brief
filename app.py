@@ -233,9 +233,9 @@ with st.sidebar:
         "📄 Max articles to summarize",
         min_value=10,
         max_value=80,
-        value=40,
+        value=20,
         step=5,
-        help="More articles = better coverage but takes longer (~4 sec/article)"
+        help="More articles = better coverage but takes longer (~2 sec/article). Start with 20 to test."
     )
 
     st.divider()
@@ -248,13 +248,15 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### 🔑 API Status")
-    gemini_ok = bool(os.environ.get("GEMINI_API_KEY"))
-    email_ok  = bool(os.environ.get("SMTP_PASSWORD"))
-    st.markdown(f"{'✅' if gemini_ok else '❌'} Gemini API key")
-    st.markdown(f"{'✅' if email_ok  else '❌'} Email (SMTP)")
+    groq_ok   = bool(os.environ.get("GROQ_API_KEY"))
+    email_ok  = bool(os.environ.get("RESEND_API_KEY") or os.environ.get("SMTP_PASSWORD"))
+    st.markdown(f"{'✅' if groq_ok  else '❌'} Groq API key (AI)")
+    st.markdown(f"{'✅' if email_ok else '⚠️'} Email ({'Resend' if os.environ.get('RESEND_API_KEY') else 'not configured'})")
 
-    if not gemini_ok:
-        st.error("Add GEMINI_API_KEY to your .env file or Streamlit secrets.")
+    if not groq_ok:
+        st.error("Add GROQ_API_KEY to your .env file.\nGet a free key at https://console.groq.com")
+    if not email_ok:
+        st.info("No email set up yet — you can still generate and download briefs.\nAdd RESEND_API_KEY to .env to enable email.")
 
 
 # ─── Main Content ─────────────────────────────────────────────────────────────
@@ -271,7 +273,7 @@ col_gen, col_email, col_copy = st.columns([2, 1.5, 1.5])
 with col_gen:
     generate_btn = st.button(
         f"▶ Generate Brief (last {time_interval}h)",
-        disabled=st.session_state.is_generating or not gemini_ok,
+        disabled=st.session_state.is_generating or not groq_ok,
         use_container_width=True,
     )
 
@@ -346,11 +348,29 @@ if generate_btn:
         progress_bar.progress(pct, text=f"AI summarizing {current}/{total} ({source_name})...")
         summ_progress.caption(f"~{eta_min} min remaining")
 
-    entries = summarize_all(
-        articles_list,
-        progress_callback=summ_progress_cb,
-        max_articles=max_articles,
-    )
+    try:
+        entries = summarize_all(
+            articles_list,
+            progress_callback=summ_progress_cb,
+            max_articles=max_articles,
+        )
+    except Exception as e:
+        progress_bar.empty()
+        status_text.empty()
+        summ_progress.empty()
+        st.session_state.is_generating = False
+        err = str(e)
+        if "api_key" in err.lower() or "invalid" in err.lower() or "401" in err or "403" in err:
+            st.error(
+                "❌ **Gemini API key is invalid.**\n\n"
+                "Your key must start with `AIzaSy...` — get a valid one at "
+                "https://aistudio.google.com/app/apikey, then update your `.env` file."
+            )
+        elif "quota" in err.lower() or "429" in err:
+            st.error("❌ **Gemini rate limit hit.** Wait a minute and try again, or reduce Max articles in the sidebar.")
+        else:
+            st.error(f"❌ **AI summarization failed:** {e}")
+        st.stop()
 
     organized = organize_by_section(entries)
 
@@ -378,7 +398,7 @@ if email_btn and st.session_state.brief_data:
     if not recipients:
         st.error("No email recipients specified.")
     elif not email_ok:
-        st.error("SMTP_PASSWORD not configured. Check your .env file.")
+        st.error("No email credentials configured.\nAdd RESEND_API_KEY to your .env file (free at resend.com).")
     else:
         with st.spinner("Sending email..."):
             plain = brief_to_plain_text(st.session_state.brief_data["organized"], initials)
@@ -460,15 +480,15 @@ else:
     """, unsafe_allow_html=True)
 
     # API setup help if needed
-    if not gemini_ok:
-        with st.expander("🔑 How to get your free Gemini API key", expanded=True):
+    if not groq_ok:
+        with st.expander("🔑 How to get your free Groq API key", expanded=True):
             st.markdown("""
-1. Go to **[https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)**
-2. Sign in with a Google account (any Gmail works)
-3. Click **Create API Key** → copy the key
+1. Go to **[https://console.groq.com](https://console.groq.com)**
+2. Sign up with any email (free)
+3. Go to **API Keys → Create API Key** → copy it
 4. Add it to your `.env` file:
    ```
-   GEMINI_API_KEY=your_key_here
+   GROQ_API_KEY=gsk_your_key_here
    ```
-5. Restart the app — that's it! The free tier gives you 1 million tokens/day.
+5. Restart the app — that's it! Groq is free with no daily limits.
             """)

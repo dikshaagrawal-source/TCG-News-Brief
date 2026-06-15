@@ -13,8 +13,7 @@ import time
 import json
 import re
 from typing import Optional
-from google import genai
-from google.genai import types
+from groq import Groq
 
 from news_fetcher import Article
 from sources_config import TCG_SECTIONS, SOURCE_ABBREVIATIONS
@@ -22,15 +21,16 @@ from sources_config import TCG_SECTIONS, SOURCE_ABBREVIATIONS
 
 # ─── Setup ───────────────────────────────────────────────────────────────────
 
-def init_gemini():
-    """Initialize Gemini client with API key from environment."""
-    api_key = os.environ.get("GEMINI_API_KEY")
+def init_groq():
+    """Initialize Groq client with API key from environment."""
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise EnvironmentError(
-            "GEMINI_API_KEY not set. Get a free key at https://aistudio.google.com/app/apikey "
-            "and add it to your .env file."
+            "GROQ_API_KEY not set.\n"
+            "Get a free key in 2 minutes at https://console.groq.com\n"
+            "Then add GROQ_API_KEY=gsk_... to your .env file."
         )
-    return genai.Client(api_key=api_key)
+    return Groq(api_key=api_key)
 
 
 # ─── Summarized Article ───────────────────────────────────────────────────────
@@ -118,25 +118,22 @@ CONTENT:
 
 # ─── Core Summarization ───────────────────────────────────────────────────────
 
-def summarize_article(model, article: Article, retries: int = 2) -> Optional[BriefEntry]:
-    """Call Gemini to classify + summarize one article."""
+def summarize_article(client, article: Article, retries: int = 2) -> Optional[BriefEntry]:
+    """Call Groq (Llama) to classify + summarize one article."""
     prompt = build_user_prompt(article)
 
     for attempt in range(retries + 1):
         try:
-            response = model.models.generate_content(
-                model="gemini-2.0-flash",  # free tier, fast
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part(text=SYSTEM_PROMPT + "\n\n" + prompt)
-                    ])
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
                 ],
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    max_output_tokens=400,
-                ),
+                temperature=0.3,
+                max_tokens=400,
             )
-            raw = response.text.strip()
+            raw = response.choices[0].message.content.strip()
 
             # Strip markdown fences if present
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -168,11 +165,14 @@ def summarize_article(model, article: Article, retries: int = 2) -> Optional[Bri
         except Exception as e:
             err_str = str(e).lower()
             if "quota" in err_str or "rate" in err_str or "429" in err_str:
-                wait = 60 * (attempt + 1)
+                wait = 30 * (attempt + 1)
                 print(f"  ⏳ Rate limited. Waiting {wait}s...")
                 time.sleep(wait)
+            elif "api_key" in err_str or "invalid" in err_str or "401" in err_str or "403" in err_str:
+                # Bad key — don't keep retrying, raise immediately so Streamlit shows the error
+                raise RuntimeError(f"Groq API error: {e}")
             elif attempt < retries:
-                time.sleep(5)
+                time.sleep(3)
             else:
                 print(f"  ✗ Gemini error for '{article.title[:50]}': {e}")
                 return None
@@ -190,14 +190,14 @@ def summarize_all(articles: list[Article],
     Respects Gemini free tier: 15 RPM → ~4 second delay between calls.
     max_articles: cap to avoid burning through too many tokens in one run.
     """
-    model = init_gemini()  # returns client
+    model = init_groq()
     entries: list[BriefEntry] = []
 
     # Prioritize articles: newest first, limit to max_articles
     to_process = articles[:max_articles]
     total = len(to_process)
 
-    DELAY_BETWEEN_CALLS = 4.5  # 15 RPM = 1 per 4 sec (with safety margin)
+    DELAY_BETWEEN_CALLS = 0.5  # Groq is very fast, generous free tier
 
     for i, article in enumerate(to_process):
         if progress_callback:
@@ -247,7 +247,7 @@ if __name__ == "__main__":
         )
     )
 
-    client = init_gemini()
+    client = init_groq()
     entry = summarize_article(client, test)
     if entry:
         print(f"Section: {entry.section}")

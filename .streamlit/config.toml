@@ -1,0 +1,7 @@
+[server]
+# Extend timeout so long summarization runs don't get cut off
+maxUploadSize = 50
+headless = true
+
+[browser]
+gatherUsageStats = false

@@ -1,0 +1,50 @@
+# GitHub Actions — TCG Daily News Brief
+# Runs automatically at 12:00 PM EST (17:00 UTC) every weekday.
+# Also has a manual trigger so any team member can run it from GitHub.
+
+name: Daily News Brief
+
+on:
+  # Automatic: 12pm EST Monday–Friday
+  schedule:
+    - cron: "0 17 * * 1-5"
+
+  # Manual: go to Actions tab → Daily News Brief → Run workflow
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Look-back window (hours)"
+        required: false
+        default: "24"
+      max_articles:
+        description: "Max articles to summarize"
+        required: false
+        default: "50"
+
+jobs:
+  generate-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and email brief
+        env:
+          GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY:   ${{ secrets.RESEND_API_KEY }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+        run: |
+          HOURS="${{ github.event.inputs.hours || '24' }}"
+          MAX="${{ github.event.inputs.max_articles || '50' }}"
+          python daily_runner.py --hours "$HOURS" --max-articles "$MAX"
