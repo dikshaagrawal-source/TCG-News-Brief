@@ -116,8 +116,8 @@ def build_user_prompt(article: Article) -> str:
     text = article.best_text()
     if not text:
         text = article.title
-    # Truncate to keep within token limits
-    text = text[:3000]
+    # Keep under 1500 chars to stay within Groq's free token-per-minute limit
+    text = text[:1500]
     return f"""SOURCE: {article.source_name}
 TITLE: {article.title}
 CONTENT:
@@ -212,17 +212,6 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
             if not summary or summary.lstrip().startswith("{"):
                 return None
 
-            # If the model returned fewer than 2 sentences, ask it to expand (once)
-            if count_sentences(summary) < 2 and attempt == 0:
-                print(f"  ↩ Only 1 sentence returned — requesting expansion...")
-                messages = messages + [
-                    {"role": "assistant", "content": raw},
-                    {"role": "user",      "content": EXPAND_PROMPT},
-                ]
-                # Don't count this as a retry — loop will increment attempt next
-                time.sleep(0.5)
-                continue
-
             return BriefEntry(
                 article=article,
                 section=section,
@@ -265,7 +254,7 @@ def summarize_all(articles: list[Article],
     to_process = articles[:max_articles]
     total = len(to_process)
 
-    DELAY_BETWEEN_CALLS = 0.5  # Groq is very fast, generous free tier
+    DELAY_BETWEEN_CALLS = 12  # Free tier: ~6000 tokens/min — one call every 12s is safe
 
     for i, article in enumerate(to_process):
         if progress_callback:
