@@ -269,10 +269,10 @@ with st.sidebar:
     max_articles = st.slider(
         "📄 Max articles to summarize",
         min_value=5,
-        max_value=80,
-        value=20,
+        max_value=100,
+        value=40,
         step=5,
-        help="More articles = better coverage but takes longer (~2 sec/article). Start with 20 to test."
+        help="More articles = more holistic coverage across all sections. 40 recommended for a full brief."
     )
 
     st.divider()

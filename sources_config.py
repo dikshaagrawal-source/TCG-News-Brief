@@ -7,21 +7,21 @@ paywall status, abbreviations, and TCG section assignments.
 # ─── TCG Section Structure ───────────────────────────────────────────────────
 
 TCG_SECTIONS = {
-    "NOTABLE":     "NOTABLE",
-    "GOV_POLICY":  "Government & Policy",
-    "ECONOMY":     "Economy & Business",
-    "ELECTIONS":   "Elections",
-    "COURTS":      "Courts, Justice & Corruption",
-    "IMMIGRATION": "Immigration",
-    "HEALTH":      "Health",
-    "ENVIRONMENT": "Environment & Climate",
-    "TECHNOLOGY":  "Technology",
-    "AMERICAS":    "Americas",
+    "NOTABLE":        "NOTABLE",
+    "GOV_POLICY":     "Government & Policy",
+    "ECONOMY":        "Economy & Business",
+    "ELECTIONS":      "Elections",
+    "COURTS":         "Courts, Justice & Corruption",
+    "IMMIGRATION":    "Immigration",
+    "HEALTH":         "Health",
+    "ENVIRONMENT":    "Environment & Climate",
+    "TECHNOLOGY":     "Technology",
+    "AMERICAS":       "Americas",
     "UKRAINE_RUSSIA": "Ukraine-Russia",
-    "EUROPE":      "Europe",
-    "CHINA_ASIA":  "China & Asia",
-    "MIDDLE_EAST": "Middle East",
-    "BEYOND":      "Beyond",
+    "EUROPE":         "Europe",
+    "CHINA_ASIA":     "China & Asia",
+    "MIDDLE_EAST":    "Middle East",
+    "BEYOND":         "Beyond",
 }
 
 SECTION_ORDER = [
@@ -76,6 +76,17 @@ SOURCE_ABBREVIATIONS = {
     "KFF":              "KFF",
     "AILA":             "AILA",
     "Semafor":          "Semafor",
+    # New sources
+    "The Guardian":     "Guardian",
+    "BBC News":         "BBC",
+    "STAT News":        "STAT",
+    "Inside Climate News": "ICN",
+    "SCOTUSblog":       "SCOTUSblog",
+    "The 19th":         "19th",
+    "Wired":            "Wired",
+    "The Intercept":    "Intercept",
+    "Democracy Now":    "DemNow",
+    "Documented":       "Documented",
 }
 
 # ─── Sources Configuration ────────────────────────────────────────────────────
@@ -321,6 +332,89 @@ SOURCES = {
         ],
         "paywall": False,
         "abbreviation": "Semafor",
+        "priority": "medium",
+    },
+
+    # ── New: Broader Coverage ──────────────────────────────────────────────
+    "The Guardian": {
+        "rss_feeds": [
+            "https://www.theguardian.com/us-news/rss",
+            "https://www.theguardian.com/world/rss",
+            "https://www.theguardian.com/society/rss",      # human interest
+            "https://www.theguardian.com/lifeandstyle/rss", # human stories
+        ],
+        "paywall": False,
+        "abbreviation": "Guardian",
+        "priority": "high",
+    },
+    "BBC News": {
+        "rss_feeds": [
+            "http://feeds.bbci.co.uk/news/rss.xml",
+            "http://feeds.bbci.co.uk/news/world/rss.xml",
+            "http://feeds.bbci.co.uk/news/stories/rss.xml", # human interest
+        ],
+        "paywall": False,
+        "abbreviation": "BBC",
+        "priority": "high",
+    },
+
+    # ── Health ─────────────────────────────────────────────────────────────
+    "STAT News": {
+        "rss_feeds": [
+            "https://www.statnews.com/feed/",
+        ],
+        "paywall": False,
+        "abbreviation": "STAT",
+        "priority": "medium",
+    },
+
+    # ── Environment ────────────────────────────────────────────────────────
+    "Inside Climate News": {
+        "rss_feeds": [
+            "https://insideclimatenews.org/feed/",
+        ],
+        "paywall": False,
+        "abbreviation": "ICN",
+        "priority": "medium",
+    },
+
+    # ── Courts ─────────────────────────────────────────────────────────────
+    "SCOTUSblog": {
+        "rss_feeds": [
+            "https://www.scotusblog.com/feed/",
+        ],
+        "paywall": False,
+        "abbreviation": "SCOTUSblog",
+        "priority": "medium",
+    },
+
+    # ── Gender, Politics & Policy ──────────────────────────────────────────
+    "The 19th": {
+        "rss_feeds": [
+            "https://19thnews.org/feed/",
+        ],
+        "paywall": False,
+        "abbreviation": "19th",
+        "priority": "medium",
+    },
+
+    # ── Technology ─────────────────────────────────────────────────────────
+    "Wired": {
+        "rss_feeds": [
+            "https://www.wired.com/feed/rss",
+        ],
+        "paywall": "partial",
+        "abbreviation": "Wired",
+        "priority": "medium",
+    },
+
+    # ── Investigative / Human Stories ──────────────────────────────────────
+    "The Intercept": {
+        "rss_feeds": [
+            "https://theintercept.com/feed/?rss",
+        ],
+        "paywall": False,
+        "abbreviation": "Intercept",
         "priority": "medium",
     },
 }
