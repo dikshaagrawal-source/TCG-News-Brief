@@ -131,19 +131,28 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
                     {"role": "user",   "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=400,
+                max_tokens=700,
             )
             raw = response.choices[0].message.content.strip()
 
-            # Strip markdown fences if present
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
+            # Strip markdown fences (```json ... ``` or ``` ... ```)
+            raw = re.sub(r"^```(?:json)?\s*\n?", "", raw, flags=re.MULTILINE)
+            raw = re.sub(r"\n?```\s*$", "", raw, flags=re.MULTILINE)
+            raw = raw.strip()
+
+            # Try to pull out JSON object; if truncated, close it first
+            json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if json_match:
+                raw = json_match.group(0)
+            elif raw.startswith("{") and not raw.rstrip().endswith("}"):
+                # Truncated JSON — close it so we can at least parse what's there
+                raw = raw.rstrip().rstrip(",") + '"}'
 
             data = json.loads(raw)
-            section   = data.get("section", "GOV_POLICY")
+            section    = data.get("section", "GOV_POLICY")
             entry_type = data.get("type", "NEWS")
-            author    = data.get("author", "")
-            summary   = data.get("summary", "").strip()
+            author     = data.get("author", "")
+            summary    = data.get("summary", "").strip()
 
             # Validate section code
             if section not in TCG_SECTIONS:
@@ -158,9 +167,16 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
             )
 
         except json.JSONDecodeError:
-            # Try to extract summary as plain text fallback
-            summary = raw[:400] if raw else article.title
-            return BriefEntry(article=article, section="GOV_POLICY", summary=summary)
+            # JSON parsing failed — use raw text as summary but clean it up
+            # Try to at least extract the summary field with regex
+            summary_match = re.search(r'"summary"\s*:\s*"(.+?)(?<!\\)"', raw, re.DOTALL)
+            section_match = re.search(r'"section"\s*:\s*"(\w+)"', raw)
+            if summary_match:
+                summary = summary_match.group(1).replace('\\"', '"')
+                section = section_match.group(1) if section_match and section_match.group(1) in TCG_SECTIONS else "GOV_POLICY"
+                return BriefEntry(article=article, section=section, summary=summary)
+            # Last resort: use title as summary
+            return BriefEntry(article=article, section="GOV_POLICY", summary=f"**{article.title}**")
 
         except Exception as e:
             err_str = str(e).lower()
