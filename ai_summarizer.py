@@ -1,11 +1,11 @@
 """
-AI Summarizer — uses Google Gemini (free tier) to:
+AI Summarizer — uses Groq (free tier, Llama 3.3 70B) to:
   1. Classify each article into a TCG section
   2. Write a TCG-style 2-4 sentence summary with bolded bottom line
   3. Detect OPINION / ANALYSIS / POLL / TREND special formats
 
-Free Gemini API: https://aistudio.google.com/app/apikey
-Limits: 15 requests/minute, 1 million tokens/day (more than enough)
+Free Groq API: https://console.groq.com → API Keys
+Limits: generous free tier, very fast inference
 """
 
 import os
@@ -83,8 +83,9 @@ TCG SECTION CODES:
 
 TCG SUMMARY STYLE RULES:
 1. FIRST SENTENCE must "bottom line" the story — state WHO did WHAT and WHY it matters.
-   It should be bold in the output (wrap in **bold**).
-2. 1-3 more sentences max for context/impact. Keep total under 4 sentences.
+   Wrap the entire first sentence in **bold** markers.
+2. Write EXACTLY 2 more sentences after the first. Total summary = 3 sentences. Never fewer.
+   Use those 2 sentences for: key context, what happens next, and/or why readers should care.
 3. Bold names of U.S. legislators, prominent political figures, business leaders,
    and foreign dignitaries (e.g., **President Biden**, **Speaker Johnson**).
 4. Think WHO / WHAT / WHERE / WHEN / WHY / IMPACT.
@@ -158,6 +159,10 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
             if section not in TCG_SECTIONS:
                 section = "GOV_POLICY"
 
+            # Safety: if summary looks like raw JSON or is empty, use title
+            if not summary or summary.lstrip().startswith("{"):
+                summary = f"**{article.title}**"
+
             return BriefEntry(
                 article=article,
                 section=section,
@@ -190,7 +195,7 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
             elif attempt < retries:
                 time.sleep(3)
             else:
-                print(f"  ✗ Gemini error for '{article.title[:50]}': {e}")
+                print(f"  ✗ Groq error for '{article.title[:50]}': {e}")
                 return None
 
     return None

@@ -115,58 +115,95 @@ def _send_via_smtp(recipients, subject, body_text, body_html):
 # ─── HTML Formatter ───────────────────────────────────────────────────────────
 
 def plain_to_html(text: str) -> str:
-    """Convert plain text brief to a styled HTML email."""
+    """Convert plain text brief to a polished newsletter-style HTML email."""
+    date_str = datetime.now().strftime("%B %-d, %Y")
     lines = text.split("\n")
-    html = [
-        '<html><body style="font-family:Arial,sans-serif;max-width:700px;'
-        'margin:auto;padding:20px;color:#1a1a1a;">',
-        f'<p style="color:#6c757d;font-size:0.85em;">Generated '
-        f'{datetime.now().strftime("%B %-d, %Y")}</p>',
-        '<hr style="border:1px solid #dee2e6;">',
-    ]
 
+    body_rows = []
     for line in lines:
         s = line.strip()
         if not s:
-            html.append("<br>")
+            continue
+        elif "THE COMMON GOOD" in s or "DAILY NEWS BRIEF" in s:
+            continue  # handled in header
+        elif s.startswith("Generated") or "=" * 10 in s:
+            continue  # skip these
         elif s.startswith("━━━"):
             title = s.replace("━", "").strip()
-            html.append(
-                f'<div style="background:#1a1a2e;color:white;padding:5px 12px;'
-                f'border-radius:3px;font-weight:700;font-size:0.8em;'
-                f'letter-spacing:1.5px;margin:16px 0 6px;">{title}</div>'
+            body_rows.append(
+                f'<tr><td style="padding:18px 0 6px;">'
+                f'<div style="background:#1a1a2e;color:white;padding:7px 16px;'
+                f'font-family:Arial,sans-serif;font-weight:700;font-size:11px;'
+                f'letter-spacing:2px;border-radius:3px;">{title}</div>'
+                f'</td></tr>'
             )
         elif s.startswith("[ ") and s.endswith(" ]"):
             title = s[2:-2].strip()
-            html.append(
-                f'<div style="font-weight:700;font-size:0.78em;letter-spacing:1px;'
-                f'border-bottom:2px solid #1a1a2e;padding-bottom:2px;margin:10px 0 4px;">'
-                f'{title}</div>'
+            body_rows.append(
+                f'<tr><td style="padding:12px 0 4px;">'
+                f'<div style="font-family:Arial,sans-serif;font-weight:700;'
+                f'font-size:10px;letter-spacing:1.5px;color:#1a1a2e;'
+                f'border-bottom:2px solid #1a1a2e;padding-bottom:4px;">{title}</div>'
+                f'</td></tr>'
             )
         elif s.startswith("•"):
             content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s[1:].strip())
-            html.append(
-                f'<p style="margin:6px 0;padding-left:10px;border-left:3px solid #1a1a2e;'
-                f'font-size:0.88em;line-height:1.6;">{content}</p>'
+            body_rows.append(
+                f'<tr><td style="padding:6px 0 2px 0;">'
+                f'<div style="font-family:Arial,sans-serif;font-size:13px;'
+                f'line-height:1.65;color:#1a1a1a;padding-left:12px;'
+                f'border-left:3px solid #1a1a2e;">{content}</div>'
+                f'</td></tr>'
             )
         elif s.startswith("http"):
-            html.append(
-                f'<p style="margin:2px 0 2px 13px;font-size:0.78em;">'
-                f'<a href="{s}" style="color:#0066cc;">🔗 Read article</a></p>'
+            body_rows.append(
+                f'<tr><td style="padding:2px 0 1px 15px;">'
+                f'<a href="{s}" style="font-family:Arial,sans-serif;font-size:11px;'
+                f'color:#0066cc;text-decoration:none;">🔗 Read full article</a>'
+                f'</td></tr>'
             )
         elif s.startswith("(") and ")" in s:
-            html.append(
-                f'<p style="margin:0 0 8px 13px;color:#6c757d;font-size:0.75em;">{s}</p>'
+            body_rows.append(
+                f'<tr><td style="padding:1px 0 10px 15px;">'
+                f'<span style="font-family:Arial,sans-serif;font-size:10px;'
+                f'color:#888;">{s}</span></td></tr>'
             )
-        elif s.startswith("THE COMMON GOOD"):
-            html.append(f'<h2 style="color:#1a1a2e;margin-bottom:2px;">{s}</h2>')
-        elif "=" * 10 in s:
-            html.append('<hr style="border:1px solid #dee2e6;margin:8px 0;">')
-        else:
-            html.append(f'<p style="font-size:0.85em;color:#6c757d;">{s}</p>')
 
-    html.append("</body></html>")
-    return "\n".join(html)
+    rows_html = "\n".join(body_rows)
+
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f4f4f4;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:20px 0;">
+<tr><td align="center">
+<table width="620" cellpadding="0" cellspacing="0" style="background:white;border-radius:6px;overflow:hidden;">
+
+  <!-- Header -->
+  <tr><td style="background:#1a1a2e;padding:24px 32px;">
+    <div style="font-family:Arial,sans-serif;font-size:11px;color:#aab;letter-spacing:2px;margin-bottom:4px;">THE COMMON GOOD</div>
+    <div style="font-family:Arial,sans-serif;font-size:22px;font-weight:700;color:white;">Daily News Brief</div>
+    <div style="font-family:Arial,sans-serif;font-size:11px;color:#aab;margin-top:4px;">{date_str}</div>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="padding:16px 32px 32px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      {rows_html}
+    </table>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:#f8f8f8;padding:14px 32px;border-top:1px solid #eee;">
+    <p style="font-family:Arial,sans-serif;font-size:10px;color:#999;margin:0;">
+      Generated by TCG News Brief Agent · For internal use only · Review before publishing
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
 
 
 if __name__ == "__main__":

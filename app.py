@@ -362,12 +362,12 @@ if generate_btn:
         err = str(e)
         if "api_key" in err.lower() or "invalid" in err.lower() or "401" in err or "403" in err:
             st.error(
-                "❌ **Gemini API key is invalid.**\n\n"
-                "Your key must start with `AIzaSy...` — get a valid one at "
-                "https://aistudio.google.com/app/apikey, then update your `.env` file."
+                "❌ **Groq API key is invalid.**\n\n"
+                "Get a valid free key at https://console.groq.com → API Keys, "
+                "then update your `.env` file with `GROQ_API_KEY=gsk_...`"
             )
         elif "quota" in err.lower() or "429" in err:
-            st.error("❌ **Gemini rate limit hit.** Wait a minute and try again, or reduce Max articles in the sidebar.")
+            st.error("❌ **Groq rate limit hit.** Wait a minute and try again, or reduce Max articles in the sidebar.")
         else:
             st.error(f"❌ **AI summarization failed:** {e}")
         st.stop()
