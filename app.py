@@ -402,7 +402,8 @@ if generate_btn:
         articles_list = articles_list[:max_articles]
 
     # Step 2: AI Summarization
-    status_text.markdown(f"**Step 2/2 — Summarizing {len(articles_list)} articles with AI...**  \n_(~4 seconds per article due to free API rate limits)_")
+    eta_mins = round((len(articles_list) * 20) / 60, 1)
+    status_text.markdown(f"**Step 2/2 — Summarizing {len(articles_list)} articles with AI...**  \n_This will take ~{eta_mins} minutes on the free plan. Please keep this tab open._")
     summ_progress = st.empty()
 
     entries: list[BriefEntry] = []

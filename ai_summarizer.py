@@ -246,15 +246,17 @@ def summarize_article(client, article: Article, retries: int = 2) -> Optional[Br
         except Exception as e:
             err_str = str(e).lower()
             if "quota" in err_str or "rate" in err_str or "429" in err_str:
-                wait = 30 * (attempt + 1)
-                print(f"  ⏳ Rate limited. Waiting {wait}s...")
+                wait = 45 * (attempt + 1)
+                print(f"  ⏳ Rate limited on '{article.title[:40]}'. Waiting {wait}s...")
                 time.sleep(wait)
+                # Continue to next attempt — don't give up on rate limits
             elif "api_key" in err_str or "invalid" in err_str or "401" in err_str or "403" in err_str:
-                raise RuntimeError(f"Groq API error: {e}")
+                raise RuntimeError(f"Groq API key error: {e}")
             elif attempt < retries:
-                time.sleep(3)
+                print(f"  ↩ Retrying '{article.title[:40]}'...")
+                time.sleep(5)
             else:
-                print(f"  ✗ Groq error for '{article.title[:50]}': {e}")
+                print(f"  ✗ Skipping '{article.title[:50]}' after {retries+1} attempts: {e}")
                 return None
 
     return None
@@ -277,7 +279,7 @@ def summarize_all(articles: list[Article],
     to_process = articles[:max_articles]
     total = len(to_process)
 
-    DELAY_BETWEEN_CALLS = 12  # Free tier: ~6000 tokens/min — one call every 12s is safe
+    DELAY_BETWEEN_CALLS = 20  # Free tier: ~6000 tokens/min — 20s is comfortably safe
 
     for i, article in enumerate(to_process):
         if progress_callback:
